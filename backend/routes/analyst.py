@@ -19,7 +19,7 @@ router = APIRouter()
 class AnalystChatIn(BaseModel):
     project_id: str
     message: str
-    dataset_id: Optional[str] = None   # if not provided, we’ll use most recent for the project
+    dataset_id: Optional[str] = None
 
 class AnalystChatOut(BaseModel):
     reply: str
