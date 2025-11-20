@@ -23,7 +23,7 @@ class ScatterRequest(BaseModel):
     y_col: str
     category_col: str | None = None
 
-@app.post("/charts/scatter")
+@router.post("/charts/scatter")
 async def create_scatter(req: ScatterRequest):
 
     ds= await datasets_collection.find_one({"project_id": req.project_id}, sort=[("createdAt", -1)])
@@ -62,7 +62,7 @@ async def create_scatter(req: ScatterRequest):
     await charts_collection.update_one({"_id": doc_id}, {"$set": {"run_id": run_id}})
     return {"id": doc_id, "run_id": run_id, "status": "running"}
 
-@app.post("/charts/{doc_id}/collect")
+@router.post("/charts/{doc_id}/collect")
 async def collect_output(doc_id: str):
     doc = await charts_collection.find_one({"_id": doc_id})
     if not doc or doc.get("status") not in ("running",):
