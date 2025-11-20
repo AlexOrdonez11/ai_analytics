@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from google.cloud import storage
 import base64
+import json as pyjson
 from datetime import timedelta
 from db import datasets_collection, project_collection, charts_collection
 
@@ -24,9 +25,9 @@ class ScatterRequest(BaseModel):
     category_col: str | None = None
 
 @router.post("/charts/scatter")
-async def create_scatter(req: ScatterRequest):
+def create_scatter(req: ScatterRequest):
 
-    ds= await datasets_collection.find_one({"project_id": req.project_id}, sort=[("createdAt", -1)])
+    ds= datasets_collection.find_one({"project_id": req.project_id}, sort=[("createdAt", -1)])
     if not ds:
         raise HTTPException(status_code=404, detail="No dataset found for project")
     
@@ -36,7 +37,7 @@ async def create_scatter(req: ScatterRequest):
 
     # 1) record in Mongo
     doc_id = str(uuid.uuid4())
-    await charts_collection.insert_one({
+    charts_collection.insert_one({
         "_id": doc_id, "type": "scatter", "params": req.dict(),
         "status": "running", "image_gcs_uri": None, "image_url": None
     })
@@ -48,31 +49,31 @@ async def create_scatter(req: ScatterRequest):
             "var1": req.x_col, "var2": req.y_col, "cat": req.category_col, "doc_id": doc_id, "input_path": ds_path
         }
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(
+    with httpx.Client(timeout=30.0) as client:
+        r = client.post(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/run-now",
             headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
             json=payload
         )
     if r.status_code >= 300:
-        await charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": r.text}})
+        charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": r.text}})
         raise HTTPException(502, f"Databricks run failed: {r.text}")
 
     run_id = r.json()["run_id"]
-    await charts_collection.update_one({"_id": doc_id}, {"$set": {"run_id": run_id}})
+    charts_collection.update_one({"_id": doc_id}, {"$set": {"run_id": run_id}})
     return {"id": doc_id, "run_id": run_id, "status": "running"}
 
 @router.post("/charts/{doc_id}/collect")
-async def collect_output(doc_id: str):
-    doc = await charts_collection.find_one({"_id": doc_id})
+def collect_output(doc_id: str):
+    doc = charts_collection.find_one({"_id": doc_id})
     if not doc or doc.get("status") not in ("running",):
         return {"status": doc.get("status") if doc else "unknown"}
 
     run_id = doc["run_id"]
 
     # 1) fetch run output (exit_value contains our base64)
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(
+    with httpx.Client(timeout=30.0) as client:
+        r = client.get(
             f"{DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get-output",
             headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
             params={"run_id": run_id}
@@ -89,15 +90,14 @@ async def collect_output(doc_id: str):
         return {"status": "running"}  # still going
 
     if result_state != "SUCCESS":
-        await charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": str(out)[:2000]}})
+        charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": str(out)[:2000]}})
         return {"status": "error"}
 
     # 2) decode the base64 PNG from the exit_value
-    import json as pyjson
     payload = pyjson.loads(out.get("notebook_output", {}).get("result", "{}"))
     b64 = payload.get("image_base64")
     if not b64:
-        await charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": "no-image"}})
+        charts_collection.update_one({"_id": doc_id}, {"$set": {"status": "error", "error": "no-image"}})
         return {"status": "error"}
 
     image_bytes = base64.b64decode(b64)
@@ -111,7 +111,7 @@ async def collect_output(doc_id: str):
     # (Optional) signed URL
     signed_url = blob.generate_signed_url(version="v4", expiration=timedelta(hours=24), method="GET")
 
-    await charts_collection.update_one({"_id": doc_id}, {
+    charts_collection.update_one({"_id": doc_id}, {
         "$set": {"status": "ready", "image_gcs_uri": f"gs://{GCS_BUCKET}/{object_key}", "image_url": signed_url}
     })
     return {"status": "ready", "image_url": signed_url}
