@@ -1,5 +1,5 @@
 import httpx, os, uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from google.cloud import storage
 import base64
@@ -13,7 +13,7 @@ DATABRICKS_TOKEN    = os.getenv("DBX_TOKEN")
 GCS_BUCKET          = os.getenv("GCS_BUCKET", "analytics-ai-bucket")
 JOB_ID              = os.getenv("DBX_EDA_JOB_ID", "573363216889606")  
 
-app = FastAPI()
+router = APIRouter()
 storage_client = storage.Client()
 
 #----- Scatter Plot Tool Functions -----
