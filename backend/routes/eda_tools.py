@@ -33,6 +33,11 @@ class ScatterArgs(BaseModel):
     max_rows: int = 5000
     gcs_prefix: str = "plots/scatter"
 
+class SummaryArgs(BaseModel):
+    project_id: str
+    dataset_id: str
+    max_rows: int = 5000
+    top_k_categories: int = 5 # for categorical tops
 
 class TsArgs(BaseModel):
     project_id: str
@@ -263,6 +268,56 @@ def correlation_tool(args: CorrArgs) -> Dict[str, Any]:
     out["url"] = url
     return out
 
+def summary_tool(args: SummaryArgs) -> Dict[str, Any]:
+    df = get_dataset_df(args.project_id, args.dataset_id, max_rows=args.max_rows)
+    if df.empty:
+        raise ValueError("Dataset returned no rows.")
+
+    rows, cols = df.shape
+
+    # Column-level basics
+    col_info = []
+    for c in df.columns:
+        series = df[c]
+        non_null = int(series.notna().sum())
+        missing = int(series.isna().sum())
+        nunique = int(series.nunique(dropna=True))
+        sample_vals = series.dropna().astype(str).unique()[:args.top_k_categories].tolist()
+        col_info.append(
+            {
+                "name": c,
+                "dtype": str(series.dtype),
+                "non_null": non_null,
+                "missing": missing,
+                "nunique": nunique,
+                "sample_values": sample_vals,
+            }
+        )
+
+    # Numeric describe
+    num = df.select_dtypes("number")
+    num_stats: Dict[str, Any] = {}
+    if not num.empty:
+        desc = num.describe().to_dict()  # {stat: {col: value}}
+        # flip to {col: {stat: value}}
+        for stat, colmap in desc.items():
+            for col, val in colmap.items():
+                num_stats.setdefault(col, {})[stat] = float(val)
+
+    # Categorical tops
+    cat_cols = df.select_dtypes(exclude="number").columns
+    cat_tops: Dict[str, Any] = {}
+    for c in cat_cols:
+        vc = df[c].astype(str).value_counts().head(args.top_k_categories)
+        cat_tops[c] = vc.to_dict()
+
+    return {
+        "type": "summary_stats",
+        "shape": {"rows": rows, "cols": cols},
+        "columns": col_info,
+        "numeric_stats": num_stats,          # per-column describe
+        "categorical_top_values": cat_tops,  # top categories per column
+    }
 
 # ---------- LangChain tools (wrappers using @tool) ----------
 
@@ -363,6 +418,27 @@ def eda_correlation(
     )
     return correlation_tool(args)
 
+@tool
+def eda_summary(
+    project_id: str,
+    dataset_id: str,
+    max_rows: int = 5000,
+    top_k_categories: int = 5,
+) -> Dict[str, Any]:
+    """
+    Compute summary statistics for the dataset:
+    shape, per-column dtypes, missingness, unique counts,
+    numeric describe stats, and top categories for categorical columns.
+    Returns a JSON dict (no plots).
+    """
+    args = SummaryArgs(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        max_rows=max_rows,
+        top_k_categories=top_k_categories,
+    )
+    return summary_tool(args)
+
 
 # ---------- Tools list ----------
 
@@ -371,4 +447,5 @@ EDA_TOOLS = [
     eda_scatter,
     eda_timeseries,
     eda_correlation,
+    eda_summary
 ]

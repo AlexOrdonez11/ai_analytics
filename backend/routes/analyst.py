@@ -170,6 +170,8 @@ You will be given:
 - After calling tools, always summarize the insights you found.
 - Be precise and skeptical about data limitations (e.g., sampling, missing values).
 - In your final answer, output concise bullet points plus short explanations of what each plot shows and any caveats.
+- Call `eda_summary` early in the analysis to understand column types, missingness, and basic stats before choosing EDA plots or forecasting models.
+- When `eda_summary` returns, synthesize the key points (important columns, missing data issues, ranges) in concise bullets.
 
 Dataset context (may be empty):
 - Name: {ds_name}
