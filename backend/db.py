@@ -152,7 +152,7 @@ def save_project_plot(project_id: str, dataset_id: str, url: str, plot_type: str
         "type": plot_type,
         "dataset_id": dataset_id,
         "meta": meta or {},
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.datetime.utcnow(),
     }
 
     coll.update_one(
