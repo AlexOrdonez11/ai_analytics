@@ -342,6 +342,7 @@ def eda_distribution(
         max_rows=max_rows,
         gcs_prefix=gcs_prefix,
     )
+    print("Running distribution tool with args:", args)
     return distribution_tool(args)
 
 
@@ -368,6 +369,7 @@ def eda_scatter(
         max_rows=max_rows,
         gcs_prefix=gcs_prefix,
     )
+    print("Running scatter tool with args:", args)
     return scatter_tool(args)
 
 
@@ -394,6 +396,7 @@ def eda_timeseries(
         max_rows=max_rows,
         gcs_prefix=gcs_prefix,
     )
+    print("Running timeseries tool with args:", args)
     return timeseries_tool(args)
 
 
@@ -416,6 +419,7 @@ def eda_correlation(
         top_k=top_k,
         gcs_prefix=gcs_prefix,
     )
+    print("Running correlation tool with args:", args)
     return correlation_tool(args)
 
 @tool
