@@ -15,7 +15,7 @@ from langchain_core.messages import (
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from .eda_tools import EDA_TOOLS
-from db import get_mongo_client, datasets_collection
+from db import client, datasets_collection
 
 router = APIRouter()
 
@@ -96,7 +96,6 @@ def _load_dataset_context(
 
 
 def _get_conversations_collection():
-    client = get_mongo_client()
     db = client["analytics_ai"]
     return db["analyst_conversations"]
 
