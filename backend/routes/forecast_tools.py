@@ -53,6 +53,64 @@ def _basic_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
         mape = float("nan")
     return {"mae": mae, "rmse": rmse, "mape": mape}
 
+def smart_parse_time(df: pd.DataFrame, time_col: str) -> pd.Series:
+    """
+    Try hard to convert a time column to pandas datetime:
+    - If it's already datetime-like, just return it.
+    - Try generic to_datetime with inference.
+    - If mostly NaT, try a list of common explicit formats.
+    - If still failing, raise a helpful error with sample raw values.
+    """
+    if time_col not in df.columns:
+        raise ValueError(f"time_col '{time_col}' not in dataset. Available: {df.columns.tolist()}")
+
+    s_raw = df[time_col]
+
+    # 1) already datetime?
+    if np.issubdtype(s_raw.dtype, np.datetime64):
+        return pd.to_datetime(s_raw)
+
+    raw_str = s_raw.astype(str).str.strip()
+
+    # 2) generic parse with inference
+    parsed = pd.to_datetime(raw_str, errors="coerce", infer_datetime_format=True)
+    non_null_ratio = parsed.notna().mean()
+
+    # If at least half of the values parsed ok, accept it
+    if non_null_ratio >= 0.5:
+        return parsed
+
+    # 3) Try a list of explicit formats
+    candidate_formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%m-%d-%Y",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%Y-%m",
+        "%b-%y",   # e.g. "Mar-04"
+        "%b-%Y",   # e.g. "Mar-2004"
+        "%Y",      # just year
+    ]
+
+    for fmt in candidate_formats:
+        try:
+            parsed_fmt = pd.to_datetime(raw_str, format=fmt, errors="coerce")
+        except Exception:
+            continue
+
+        ratio = parsed_fmt.notna().mean()
+        if ratio >= 0.8:  # require most rows to parse for an explicit format
+            print(f"smart_parse_time: using explicit format '{fmt}' for column '{time_col}'", flush=True)
+            return parsed_fmt
+
+    # 4) As a last resort, give a clear error
+    raise ValueError(
+        f"Could not parse time_col '{time_col}' to datetime. "
+        f"Sample raw values: {raw_str.head(8).tolist()}. "
+        f"Consider specifying a format like '%b-%y' for values such as 'Mar-04'."
+    )
 
 def _prepare_series(
     project_id: str,
@@ -68,7 +126,11 @@ def _prepare_series(
         raise ValueError(f"Columns '{time_col}' or '{y_col}' not found in dataset.")
 
     df = df.copy()
-    df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+    print("Initial data sample:")
+    print(df[[time_col, y_col]].head(5))    
+    df[time_col] = smart_parse_time(df, time_col)
+    print("After datetime conversion, sample data:")
+    print(df[[time_col, y_col]].head(5))
     df = df.dropna(subset=[time_col, y_col])
     print("After dropping NA, rows left:", len(df))
     print(df[[time_col, y_col]].head(5))

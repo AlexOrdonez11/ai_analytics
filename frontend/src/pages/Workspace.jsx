@@ -8,6 +8,7 @@ import { api } from '../lib/api.js'
 function useWorkspace(projectId) {
   const [messages, setMessages] = React.useState([])
   const [analyticsItems, setAnalyticsItems] = React.useState([])
+  const [isThinking, setIsThinking] = React.useState(false)
 
   React.useEffect(() => {
     let active = true
@@ -55,12 +56,15 @@ function useWorkspace(projectId) {
     // call analyst agent
     let reply = "I'm having trouble analyzing right now."
     let plots = []
+    setIsThinking(true)
     try {
       const out = await api.analystChat({ project_id: projectId, message: text })
       reply = out.reply
       plots = Array.isArray(out.plots) ? out.plots : []
     } catch (e) {
       console.error(e)
+    } finally {
+      setIsThinking(false)
     }
 
     const botLocal = { id: crypto.randomUUID(), role: 'assistant', text: reply, ts: Date.now() + 1 }
@@ -81,11 +85,11 @@ function useWorkspace(projectId) {
   }
 
   const clearAnalytics = () => setAnalyticsItems([])
-  return { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics }
+  return { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics , isThinking }
 }
 
 export default function Workspace({ projectId, projectName }) {
-  const { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics } =
+  const { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics, isThinking } =
     useWorkspace(projectId)
   const split = analyticsItems.length > 0
 
@@ -115,7 +119,7 @@ export default function Workspace({ projectId, projectName }) {
       >
         {/* LEFT: Chat (scrollable) */}
         <div className="h-[100vh] overflow-y-auto pr-1 space-y-4">
-          <ChatPanel messages={messages} onSend={sendMessage} />
+          <ChatPanel messages={messages} onSend={sendMessage} isThinking={isThinking} />
         </div>
 
         {/* RIGHT: Dataset + analytics (scrollable) */}
