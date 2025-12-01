@@ -41,15 +41,27 @@ function useWorkspace(projectId) {
 
     // call analyst agent
     let reply = "I'm having trouble analyzing right now."
+    let plots = []
     try {
       const out = await api.analystChat({ project_id: projectId, message: text })
       reply = out.reply
+      plots = Array.isArray(out.plots) ? out.plots : []
     } catch (e) {
       console.error(e)
     }
 
     const botLocal = { id: crypto.randomUUID(), role: 'assistant', text: reply, ts: Date.now() + 1 }
     setMessages(prev => [...prev, botLocal])
+
+    if (plots.length > 0) {
+      const newItems = plots.map(p => ({
+        id: crypto.randomUUID(),
+        type: 'image',        // our custom type for images
+        url: p.url,           // backend returns { url, type, ... }
+        meta: p,              // keep the rest of the metadata if you want
+      }))
+      setAnalyticsItems(prev => [...prev, ...newItems])
+    }
 
     // persist assistant message (optional; for unified history)
     //try { await api.createConversation({ project_id: projectId, role: 'assistant', message: { text: reply } }) } catch {}

@@ -13,3 +13,7 @@ openai>=1.43
 langchain
 langchain-openai
 langchain-community
+google-cloud-bigquery
+mathplotlib
+psycopg2-binary
+python-dateutil
