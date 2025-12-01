@@ -6,7 +6,7 @@ from datetime import datetime
 from bson import ObjectId
 
 from langchain_openai import ChatOpenAI
-from langchain.agents.openai_tools.base import create_openai_tools_agent
+from langchain.agents import create_openai_tools_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.callbacks import BaseCallbackHandler
