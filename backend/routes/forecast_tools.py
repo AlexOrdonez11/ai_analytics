@@ -70,9 +70,13 @@ def _prepare_series(
     df = df.copy()
     df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
     df = df.dropna(subset=[time_col, y_col])
+    print("After dropping NA, rows left:", len(df))
+    print(df[[time_col, y_col]].head(5))
     df = df.sort_values(time_col)
+    clean = df[y_col].astype(str).str.extract(r"([-+]?\d*\.?\d+)")[0]
 
-    s = pd.to_numeric(df[y_col], errors="coerce")
+    s = pd.to_numeric(clean, errors="coerce").dropna()
+
     s.index = df[time_col]
     s = s.dropna()
 
