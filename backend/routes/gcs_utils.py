@@ -1,7 +1,6 @@
 import os
 import uuid
 import io
-from datetime import timedelta
 from google.cloud import storage
 
 GCS_BUCKET = os.getenv("GCS_BUCKET", "analytics-ai-bucket")
@@ -25,11 +24,8 @@ def upload_image_and_get_url(data: bytes, path: str, content_type: str = "image/
         io.BytesIO(data),
         content_type=content_type,
     )
+    
+    # Make it public
+    blob.make_public()
 
-    signed_url = blob.generate_signed_url(
-        version="v4",
-        expiration=timedelta(hours=44),
-        method="GET"
-    )
-
-    return signed_url
+    return blob.public_url
