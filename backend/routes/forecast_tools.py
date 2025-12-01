@@ -303,21 +303,34 @@ def _forecast_holt_impl(args: HoltArgs) -> Dict[str, Any]:
 
 
 def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
+    # 1) prepare full series and split
     s = _prepare_series(args.project_id, args.dataset_id, args.time_col, args.y_col, args.max_rows)
     split = _train_test_split_series(s, args.test_size)
     train, test = split["train"], split["test"]
 
+    # 2) fit ARIMA on the train part only
     model = ARIMA(train, order=(args.p, args.d, args.q)).fit()
 
-    test_forecast = model.forecast(len(test))
-    future_forecast = model.forecast(args.horizon)
+    # 3) forecast test + future in one shot to keep things consistent
+    total_steps = len(test) + args.horizon
+    fc_all = model.forecast(total_steps)
 
-    metrics = _basic_metrics(test.values, test_forecast.values)
+    # first part -> test horizon, second part -> future horizon
+    fc_test = fc_all.iloc[: len(test)]
+    fc_future = fc_all.iloc[len(test) :]
+
+    # align indices to time axis
+    fc_test.index = test.index
 
     future_index = _future_index_from_series(s, args.horizon)
-    future_forecast.index = future_index
+    fc_future.index = future_index
 
-    combined_forecast = pd.concat([test_forecast, future_forecast])
+    # 4) metrics on the test window
+    metrics = _basic_metrics(test.values, fc_test.values)
+
+    # 5) for plotting, combine test + future forecasts
+    combined_forecast = pd.concat([fc_test, fc_future])
+
     url = _plot_forecast(
         train,
         test,
@@ -327,11 +340,11 @@ def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
         args.gcs_prefix,
     )
 
-    # ---------- NEW: CSV report with future predictions ---------- #
+    # 6) build CSV report & metadata (as you already do)
     report_df = pd.DataFrame(
         {
-            "timestamp": future_forecast.index,
-            "forecast": future_forecast.values,
+            "timestamp": fc_future.index,
+            "forecast": fc_future.values,
         }
     )
     csv_buf = io.StringIO()
@@ -344,7 +357,6 @@ def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
         report_path,
         content_type="text/csv",
     )
-    # ------------------------------------------------------------- #
 
     meta = {
         "model": "arima",
@@ -354,14 +366,15 @@ def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
         "horizon": args.horizon,
         "test_size": args.test_size,
         "metrics": metrics,
-        "report_path": report_path,   # keep path in Mongo
+        "report_path": report_path,
     }
     saved = save_project_plot(args.project_id, args.dataset_id, url, "forecast_arima", meta)
+
     out = dict(saved)
     out["url"] = url
     out["metrics"] = metrics
-    out["horizon_forecast"] = {str(k): float(v) for k, v in future_forecast.items()}
-    out["report_url"] = report_url   # 🔥 public CSV URL for frontend download
+    out["horizon_forecast"] = {str(k): float(v) for k, v in fc_future.items()}
+    out["report_url"] = report_url
     return out
 
 

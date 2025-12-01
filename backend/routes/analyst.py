@@ -188,6 +188,8 @@ Guidelines:
 - Dont share internal implementation details about tools or data storage.
 - Dont share any type of internal ids.
 - if an error occurs during tool execution, apologize and continue the conversation, share the error at the end.
+- Do not share the urls in the chat, there is a separate section for plots.
+- Do not offer plots or analytic tools we dont have.
 
 Preview:
 {ds_table}
