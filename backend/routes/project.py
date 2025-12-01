@@ -36,7 +36,58 @@ def _normalize(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc["id"] = str(doc.pop("_id"))
     return doc
 
+class PlotItem(BaseModel):
+  id: str
+  url: str
+  type: str
+  dataset_id: str
+  meta: Dict[str, Any]
+  created_at: str  # ISO string
+
+class ProjectPlotsOut(BaseModel):
+  project_id: str
+  plots: List[PlotItem]
+
+def _get_projects_collection():
+    return project_collection
+
 # ---------- Endpoints ----------
+
+@router.get("/projects/{project_id}/plots", response_model=ProjectPlotsOut)
+def list_project_plots(project_id: str):
+    coll = _get_projects_collection()
+    # handle ObjectId or string
+    try:
+        pid = ObjectId(project_id)
+        proj = coll.find_one({"_id": pid})
+        if not proj:
+            proj = coll.find_one({"_id": project_id})
+    except Exception:
+        proj = coll.find_one({"_id": project_id})
+
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    plots = proj.get("plots", []) or []
+    out_plots: List[PlotItem] = []
+
+    for p in plots:
+        created_at = p.get("created_at")
+        if isinstance(created_at, datetime):
+            created_at = created_at.isoformat()
+        out_plots.append(
+            PlotItem(
+                id=str(p.get("id") or p.get("_id")),
+                url=p.get("url", ""),
+                type=p.get("type", ""),
+                dataset_id=str(p.get("dataset_id", "")),
+                meta=p.get("meta") or {},
+                created_at=created_at or "",
+            )
+        )
+
+    return ProjectPlotsOut(project_id=project_id, plots=out_plots)
+
 @router.post("/projects", response_model=ProjectOut)
 def create_project(payload: ProjectCreate):
     # unique name per user

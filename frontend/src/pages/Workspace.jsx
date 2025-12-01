@@ -27,6 +27,19 @@ function useWorkspace(projectId) {
         console.error('Failed to load conversations:', e)
         setMessages([])
       }
+      try {
+        const plotsRes = await api.listProjectPlots({ project_id: projectId })
+        const newItems = plotsRes.plots.map(p => ({
+          id: p.id,
+          type: 'image',
+          url: p.url,
+          meta: p,
+        }))
+        setAnalyticsItems(newItems)
+      } catch (e) {
+        console.error('Failed to load project plots:', e)
+      }
+
     }
     load()
     return () => { active = false }
