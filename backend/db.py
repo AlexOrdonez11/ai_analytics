@@ -67,7 +67,7 @@ def _gcs_prefix_from_uri(gcs_uri: str):
 def get_dataset_df(project_id: str, dataset_id: Optional[str], max_rows: int = 5000) -> pd.DataFrame:
     """
     Load up to max_rows rows from CSV files for this dataset from GCS.
-    Reads all CSVs under the dataset's GCS prefix until max_rows is reached.
+    Works if gcs_uri is a single file OR a folder (CSV files may be one layer down).
     """
     meta = _get_dataset_meta(project_id, dataset_id)
     gcs_uri = meta.get("gcs_uri")
@@ -77,19 +77,47 @@ def get_dataset_df(project_id: str, dataset_id: Optional[str], max_rows: int = 5
     bucket_name, prefix = _gcs_prefix_from_uri(gcs_uri)
     bucket = _storage_client.bucket(bucket_name)
 
-    # List all CSV blobs in the dataset folder
-    blobs = [b for b in bucket.list_blobs(prefix=prefix) if b.name.lower().endswith(".csv")]
-    if not blobs:
-        raise RuntimeError(f"No CSV files found under {gcs_uri}")
+    # --- Case A: gcs_uri is a direct CSV file and exists ---
+    if prefix.lower().endswith(".csv"):
+        blob = bucket.blob(prefix)
+        if blob.exists():
+            data = blob.download_as_bytes()
+            df = pd.read_csv(io.BytesIO(data), nrows=max_rows)
+            df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
+            return df
+        # If it *looks* like a file but doesn't exist, fall back to parent folder
+        if "/" in prefix:
+            prefix = prefix.rsplit("/", 1)[0] + "/"
 
+    # --- Case B: gcs_uri is a folder (or we fell back to its parent) ---
+    # List *recursively* all CSVs under prefix (one layer down or deeper)
+    if prefix and not prefix.endswith("/"):
+        prefix = prefix + "/"
+
+    csv_blobs = []
+    for b in bucket.list_blobs(prefix=prefix):
+        if b.name.lower().endswith(".csv"):
+            csv_blobs.append(b)
+
+    # If still none, try one more fallback: use just the parent of current prefix
+    if not csv_blobs and prefix and "/" in prefix.strip("/"):
+        parent_prefix = prefix.strip("/").rsplit("/", 1)[0] + "/"
+        for b in bucket.list_blobs(prefix=parent_prefix):
+            if b.name.lower().endswith(".csv"):
+                csv_blobs.append(b)
+
+    if not csv_blobs:
+        raise RuntimeError(f"No CSV files found under {gcs_uri} (searched recursively).")
+
+    # Read CSVs until max_rows is reached (stable order)
+    csv_blobs.sort(key=lambda b: b.name)
     frames: List[pd.DataFrame] = []
     rows_left = max_rows
 
-    for blob in blobs:
+    for b in csv_blobs:
         if rows_left <= 0:
             break
-        # Download partial CSV into memory
-        data = blob.download_as_bytes()
+        data = b.download_as_bytes()
         df_part = pd.read_csv(io.BytesIO(data), nrows=rows_left)
         if df_part.empty:
             continue
@@ -100,21 +128,8 @@ def get_dataset_df(project_id: str, dataset_id: Optional[str], max_rows: int = 5
         return pd.DataFrame()
 
     df = pd.concat(frames, ignore_index=True)
-    # Optionally drop any unnamed index columns
     df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
     return df
-
-
-def _get_projects_collection():
-    db = client["AI_Analytics"]  # change if your DB name is different
-    return db["Projects"]
-
-def _parse_project_id(project_id: str):
-    # handle both ObjectId strings and plain strings
-    try:
-        return ObjectId(project_id)
-    except Exception:
-        return project_id
 
 def save_project_plot(project_id: str, dataset_id: str, url: str, plot_type: str, meta: Dict[str, Any]) -> Dict[str, Any]:
     """
