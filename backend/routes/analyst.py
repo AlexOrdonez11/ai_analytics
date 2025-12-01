@@ -142,7 +142,7 @@ def _log_turn(project_id: str, user_text: str, assistant_text: str):
 # -----------------------------
 # LLM + Prompt
 # -----------------------------
-OPENAI_MODEL = os.getenv("ANALYST_MODEL", "gpt-5.1-mini")
+OPENAI_MODEL = os.getenv("ANALYST_MODEL", "gpt-5-mini")
 llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0.2)
 
 SYSTEM_PROMPT = """
