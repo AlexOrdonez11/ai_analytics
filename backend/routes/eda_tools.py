@@ -201,10 +201,7 @@ def correlation_tool(args: CorrArgs) -> Dict[str, Any]:
 
 # ---------- LangChain tools (wrappers using @tool) ----------
 
-@tool(
-    name="eda_distribution",
-    description="Plot a histogram distribution for a numeric column from a CSV dataset in GCS and persist the plot.",
-)
+@tool
 def eda_distribution(
     project_id: str,
     dataset_id: str,
@@ -213,6 +210,10 @@ def eda_distribution(
     max_rows: int = 5000,
     gcs_prefix: str = "plots/dist",
 ) -> Dict[str, Any]:
+    """
+    Plot a histogram distribution for a numeric column from a CSV dataset in GCS
+    and persist the plot. Returns a dict with at least 'url'.
+    """
     args = DistArgs(
         project_id=project_id,
         dataset_id=dataset_id,
@@ -224,10 +225,7 @@ def eda_distribution(
     return distribution_tool(args)
 
 
-@tool(
-    name="eda_scatter",
-    description="Create a scatterplot (optionally colored by a category) from a CSV dataset in GCS and persist the plot.",
-)
+@tool
 def eda_scatter(
     project_id: str,
     dataset_id: str,
@@ -237,6 +235,10 @@ def eda_scatter(
     max_rows: int = 5000,
     gcs_prefix: str = "plots/scatter",
 ) -> Dict[str, Any]:
+    """
+    Create a scatterplot (optionally colored by a category) from a CSV dataset in GCS
+    and persist the plot. Returns a dict with at least 'url'.
+    """
     args = ScatterArgs(
         project_id=project_id,
         dataset_id=dataset_id,
@@ -249,10 +251,7 @@ def eda_scatter(
     return scatter_tool(args)
 
 
-@tool(
-    name="eda_timeseries",
-    description="Plot a time series from a CSV dataset in GCS and persist the plot.",
-)
+@tool
 def eda_timeseries(
     project_id: str,
     dataset_id: str,
@@ -262,6 +261,10 @@ def eda_timeseries(
     max_rows: int = 5000,
     gcs_prefix: str = "plots/ts",
 ) -> Dict[str, Any]:
+    """
+    Plot a time series from a CSV dataset in GCS and persist the plot.
+    Returns a dict with at least 'url'.
+    """
     args = TsArgs(
         project_id=project_id,
         dataset_id=dataset_id,
@@ -274,10 +277,7 @@ def eda_timeseries(
     return timeseries_tool(args)
 
 
-@tool(
-    name="eda_correlation",
-    description="Produce a correlation heatmap from a CSV dataset in GCS and persist the plot.",
-)
+@tool
 def eda_correlation(
     project_id: str,
     dataset_id: str,
@@ -285,6 +285,10 @@ def eda_correlation(
     top_k: int = 15,
     gcs_prefix: str = "plots/corr",
 ) -> Dict[str, Any]:
+    """
+    Produce a correlation heatmap from a CSV dataset in GCS and persist the plot.
+    Returns a dict with at least 'url'.
+    """
     args = CorrArgs(
         project_id=project_id,
         dataset_id=dataset_id,
@@ -297,7 +301,7 @@ def eda_correlation(
 
 # ---------- Tools list ----------
 
-EDA_TOOLS: List[Any] = [
+EDA_TOOLS = [
     eda_distribution,
     eda_scatter,
     eda_timeseries,
