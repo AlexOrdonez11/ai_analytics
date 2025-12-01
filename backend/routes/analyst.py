@@ -4,24 +4,28 @@ from typing import List, Optional, Dict, Any
 import os
 from datetime import datetime
 from bson import ObjectId
+
 from langchain_openai import ChatOpenAI
-from langchain.agents.agent import AgentExecutor
 from langchain.agents.openai_tools.base import create_openai_tools_agent
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.callbacks import BaseCallbackHandler
 
 from .eda_tools import EDA_TOOLS
 from db import get_mongo_client, datasets_collection
 
 router = APIRouter()
 
+
 class AnalystChatIn(BaseModel):
     project_id: str
     message: str
 
+
 class AnalystChatOut(BaseModel):
     reply: str
     plots: Optional[List[Dict[str, Any]]] = None
+
 
 def _oid(s: str) -> ObjectId:
     try:
@@ -29,11 +33,22 @@ def _oid(s: str) -> ObjectId:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid id")
 
-def _load_dataset_context(project_id: str, dataset_id: Optional[str]) -> Dict[str, Any]:
+
+def _load_dataset_context(project_id: str, dataset_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load latest dataset for the project (or a specific dataset_id if provided)
+    and build a compact schema/preview context.
+    """
     if dataset_id:
         ds = datasets_collection.find_one({"_id": _oid(dataset_id), "project_id": project_id})
     else:
-        ds = datasets_collection.find({"project_id": project_id}).sort("createdAt", -1).limit(1).next()
+        ds = (
+            datasets_collection.find({"project_id": project_id})
+            .sort("createdAt", -1)
+            .limit(1)
+            .next()
+        )
+
     if not ds:
         return {}
 
@@ -100,16 +115,36 @@ prompt = ChatPromptTemplate.from_messages(
         ("system", SYSTEM_PROMPT),
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
+        # Required so the tools agent can inject prior tool calls / thoughts
+        MessagesPlaceholder("agent_scratchpad"),
     ]
 )
 
+# --- Callback handler to capture tool outputs that contain plot URLs ---
+
+
+class PlotCollectorCallbackHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.plots: List[Dict[str, Any]] = []
+
+    def on_tool_end(self, output: Any, **kwargs: Any) -> None:
+        """
+        Called whenever a tool finishes. If the tool returns a dict with a 'url'
+        (our EDA tools contract), store it so the API can expose it.
+        """
+        if isinstance(output, dict) and "url" in output:
+            self.plots.append(output)
+
+
+# Build the agent as a pure Runnable (no AgentExecutor)
 agent = create_openai_tools_agent(llm, tools=EDA_TOOLS, prompt=prompt)
-agent_executor = AgentExecutor(agent=agent, tools=EDA_TOOLS, verbose=False)
+
 
 def _get_conversations_collection():
     client = get_mongo_client()
     db = client["analytics_ai"]
     return db["analyst_conversations"]
+
 
 def _load_chat_history(project_id: str) -> List[Any]:
     coll = _get_conversations_collection()
@@ -126,22 +161,35 @@ def _load_chat_history(project_id: str) -> List[Any]:
             history.append(AIMessage(content=text))
     return history
 
+
 def _log_turn(project_id: str, user_text: str, assistant_text: str):
     coll = _get_conversations_collection()
     now = datetime.utcnow()
     coll.insert_many(
         [
-            {"project_id": project_id, "role": "user", "message": {"text": user_text}, "timestamp": now, "source": "analyst_agent"},
-            {"project_id": project_id, "role": "assistant", "message": {"text": assistant_text}, "timestamp": now, "source": "analyst_agent"},
+            {
+                "project_id": project_id,
+                "role": "user",
+                "message": {"text": user_text},
+                "timestamp": now,
+                "source": "analyst_agent",
+            },
+            {
+                "project_id": project_id,
+                "role": "assistant",
+                "message": {"text": assistant_text},
+                "timestamp": now,
+                "source": "analyst_agent",
+            },
         ]
     )
+
 
 @router.post("/analyst/chat", response_model=AnalystChatOut)
 def analyst_chat(body: AnalystChatIn):
 
     chat_history = _load_chat_history(body.project_id)
 
-    ds_ctx = {}
     try:
         ds_ctx = _load_dataset_context(body.project_id)
     except StopIteration:
@@ -149,9 +197,9 @@ def analyst_chat(body: AnalystChatIn):
 
     # Fill prompt vars
     ds_name = ds_ctx.get("name", "N/A")
-    ds_gcs  = ds_ctx.get("gcs_uri", "N/A")
+    ds_gcs = ds_ctx.get("gcs_uri", "N/A")
     ds_schema = ds_ctx.get("schema_text", "N/A")
-    ds_table  = ds_ctx.get("table_text", "(no preview)")
+    ds_table = ds_ctx.get("table_text", "(no preview)")
 
     ds_info = f"project_id='{body.project_id}'"
     agent_input = (
@@ -159,7 +207,10 @@ def analyst_chat(body: AnalystChatIn):
         f"When you call any EDA tool, always pass {ds_info} in the tool arguments."
     )
 
-    result = agent_executor.invoke(
+    # Use callback to capture plot outputs from tools
+    cb = PlotCollectorCallbackHandler()
+
+    result = agent.invoke(
         {
             "input": agent_input,
             "chat_history": chat_history,
@@ -167,16 +218,20 @@ def analyst_chat(body: AnalystChatIn):
             "ds_gcs": ds_gcs,
             "ds_schema": ds_schema,
             "ds_table": ds_table,
-        }
+        },
+        config={"callbacks": [cb]},
     )
 
-    reply_text = result.get("output", "")
-    plots: List[Dict[str, Any]] = []
-    for step in result.get("intermediate_steps", []):
-        _, tool_res = step
-        if isinstance(tool_res, dict) and "url" in tool_res:
-            plots.append(tool_res)
+    # Result from a Runnable agent is usually an AIMessage; handle both dict / message defensively
+    if isinstance(result, dict):
+        reply_text = result.get("output") or result.get("content") or str(result)
+    elif hasattr(result, "content"):
+        reply_text = result.content
+    else:
+        reply_text = str(result)
+
+    plots = cb.plots or None
 
     _log_turn(body.project_id, body.message, reply_text)
-    return AnalystChatOut(reply=reply_text, plots=plots or None)
+    return AnalystChatOut(reply=reply_text, plots=plots)
 # ---------- End of analyst.py ----------
