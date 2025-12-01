@@ -1,13 +1,16 @@
 # routes/eda_tools.py
 
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 import io
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from langchain_core.tools import tool  # <-- modern tools API
+
 from db import get_dataset_df, save_project_plot
 from .gcs_utils import new_image_path, upload_image_and_get_url
+
 
 # ---------- Args schemas ----------
 
@@ -19,6 +22,7 @@ class DistArgs(BaseModel):
     max_rows: int = 5000
     gcs_prefix: str = "plots/dist"
 
+
 class ScatterArgs(BaseModel):
     project_id: str
     dataset_id: str
@@ -27,6 +31,7 @@ class ScatterArgs(BaseModel):
     hue: Optional[str] = None
     max_rows: int = 5000
     gcs_prefix: str = "plots/scatter"
+
 
 class TsArgs(BaseModel):
     project_id: str
@@ -37,12 +42,14 @@ class TsArgs(BaseModel):
     max_rows: int = 5000
     gcs_prefix: str = "plots/ts"
 
+
 class CorrArgs(BaseModel):
     project_id: str
     dataset_id: str
     max_rows: int = 5000
     top_k: int = 15
     gcs_prefix: str = "plots/corr"
+
 
 # ---------- Helpers ----------
 
@@ -54,7 +61,8 @@ def _save_fig_to_gcs(fig, prefix: str) -> str:
     path = new_image_path(prefix, "png")
     return upload_image_and_get_url(buf.read(), path, content_type="image/png")
 
-# ---------- Tools ----------
+
+# ---------- Core plotting functions (unchanged) ----------
 
 def distribution_tool(args: DistArgs) -> Dict[str, Any]:
     df = get_dataset_df(args.project_id, args.dataset_id, max_rows=args.max_rows)
@@ -81,10 +89,10 @@ def distribution_tool(args: DistArgs) -> Dict[str, Any]:
     }
     saved = save_project_plot(args.project_id, args.dataset_id, url, "distribution", meta)
 
-    # return what the agent/frontend need
     out = dict(saved)
     out["url"] = url
     return out
+
 
 def scatter_tool(args: ScatterArgs) -> Dict[str, Any]:
     df = get_dataset_df(args.project_id, args.dataset_id, max_rows=args.max_rows)
@@ -122,6 +130,7 @@ def scatter_tool(args: ScatterArgs) -> Dict[str, Any]:
     out["url"] = url
     return out
 
+
 def timeseries_tool(args: TsArgs) -> Dict[str, Any]:
     df = get_dataset_df(args.project_id, args.dataset_id, max_rows=args.max_rows)
     if df.empty:
@@ -158,6 +167,7 @@ def timeseries_tool(args: TsArgs) -> Dict[str, Any]:
     out["url"] = url
     return out
 
+
 def correlation_tool(args: CorrArgs) -> Dict[str, Any]:
     df = get_dataset_df(args.project_id, args.dataset_id, max_rows=args.max_rows)
     num = df.select_dtypes("number")
@@ -188,32 +198,108 @@ def correlation_tool(args: CorrArgs) -> Dict[str, Any]:
     out["url"] = url
     return out
 
-# ---------- Tools list ----------
-from langchain.tools import StructuredTool
 
-EDA_TOOLS = [
-    StructuredTool.from_function(
-        name="eda_distribution",
-        description="Plot a histogram distribution for a numeric column from a CSV dataset in GCS and persist the plot.",
-        func=distribution_tool,
-        args_schema=DistArgs,
-    ),
-    StructuredTool.from_function(
-        name="eda_scatter",
-        description="Create a scatterplot (optionally colored by a category) from a CSV dataset in GCS and persist the plot.",
-        func=scatter_tool,
-        args_schema=ScatterArgs,
-    ),
-    StructuredTool.from_function(
-        name="eda_timeseries",
-        description="Plot a time series from a CSV dataset in GCS and persist the plot.",
-        func=timeseries_tool,
-        args_schema=TsArgs,
-    ),
-    StructuredTool.from_function(
-        name="eda_correlation",
-        description="Produce a correlation heatmap from a CSV dataset in GCS and persist the plot.",
-        func=correlation_tool,
-        args_schema=CorrArgs,
-    ),
+# ---------- LangChain tools (wrappers using @tool) ----------
+
+@tool(
+    name="eda_distribution",
+    description="Plot a histogram distribution for a numeric column from a CSV dataset in GCS and persist the plot.",
+)
+def eda_distribution(
+    project_id: str,
+    dataset_id: str,
+    column: str,
+    bins: int = 30,
+    max_rows: int = 5000,
+    gcs_prefix: str = "plots/dist",
+) -> Dict[str, Any]:
+    args = DistArgs(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        column=column,
+        bins=bins,
+        max_rows=max_rows,
+        gcs_prefix=gcs_prefix,
+    )
+    return distribution_tool(args)
+
+
+@tool(
+    name="eda_scatter",
+    description="Create a scatterplot (optionally colored by a category) from a CSV dataset in GCS and persist the plot.",
+)
+def eda_scatter(
+    project_id: str,
+    dataset_id: str,
+    x: str,
+    y: str,
+    hue: Optional[str] = None,
+    max_rows: int = 5000,
+    gcs_prefix: str = "plots/scatter",
+) -> Dict[str, Any]:
+    args = ScatterArgs(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        x=x,
+        y=y,
+        hue=hue,
+        max_rows=max_rows,
+        gcs_prefix=gcs_prefix,
+    )
+    return scatter_tool(args)
+
+
+@tool(
+    name="eda_timeseries",
+    description="Plot a time series from a CSV dataset in GCS and persist the plot.",
+)
+def eda_timeseries(
+    project_id: str,
+    dataset_id: str,
+    time_col: str,
+    y: str,
+    group: Optional[str] = None,
+    max_rows: int = 5000,
+    gcs_prefix: str = "plots/ts",
+) -> Dict[str, Any]:
+    args = TsArgs(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        time_col=time_col,
+        y=y,
+        group=group,
+        max_rows=max_rows,
+        gcs_prefix=gcs_prefix,
+    )
+    return timeseries_tool(args)
+
+
+@tool(
+    name="eda_correlation",
+    description="Produce a correlation heatmap from a CSV dataset in GCS and persist the plot.",
+)
+def eda_correlation(
+    project_id: str,
+    dataset_id: str,
+    max_rows: int = 5000,
+    top_k: int = 15,
+    gcs_prefix: str = "plots/corr",
+) -> Dict[str, Any]:
+    args = CorrArgs(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        max_rows=max_rows,
+        top_k=top_k,
+        gcs_prefix=gcs_prefix,
+    )
+    return correlation_tool(args)
+
+
+# ---------- Tools list ----------
+
+EDA_TOOLS: List[Any] = [
+    eda_distribution,
+    eda_scatter,
+    eda_timeseries,
+    eda_correlation,
 ]
