@@ -85,7 +85,8 @@ function useWorkspace(projectId) {
 }
 
 export default function Workspace({ projectId, projectName }) {
-  const { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics } = useWorkspace(projectId)
+  const { messages, analyticsItems, setAnalyticsItems, sendMessage, clearAnalytics } =
+    useWorkspace(projectId)
   const split = analyticsItems.length > 0
 
   return (
@@ -93,22 +94,38 @@ export default function Workspace({ projectId, projectName }) {
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-xl font-semibold">{projectName || 'Workspace'}</h2>
-          <p className="text-sm text-neutral-400">{projectName ? 'Chat‑driven analytics' : `Project: ${projectId}`}</p>
+          <p className="text-sm text-neutral-400">
+            {projectName ? 'Chat-driven analytics' : `Project: ${projectId}`}
+          </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={clearAnalytics} className="text-sm px-3 py-1 rounded-xl bg-neutral-800 hover:bg-neutral-700">
+          <button
+            onClick={clearAnalytics}
+            className="text-sm px-3 py-1 rounded-xl bg-neutral-800 hover:bg-neutral-700"
+          >
             Clear analytics
           </button>
         </div>
       </div>
-
-      <div className={`grid gap-4 ${split ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-        <div className="min-h-[65vh]">
-          {split && <AnalyticsPanel items={analyticsItems} setItems={setAnalyticsItems} />}
-          <DatasetsPanel projectId={projectId} />
-        </div>
-        <div className="min-h-[65vh] space-y-4">
+      <DatasetsPanel projectId={projectId} />
+      <div
+        className={`grid gap-4 ${
+          split ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
+        }`}
+      >
+        {/* LEFT: Chat (scrollable) */}
+        <div className="h-[100vh] overflow-y-auto pr-1 space-y-4">
           <ChatPanel messages={messages} onSend={sendMessage} />
+        </div>
+
+        {/* RIGHT: Dataset + analytics (scrollable) */}
+        <div className="h-[100vh] overflow-y-auto pl-1 space-y-3">
+          {split && (
+            <AnalyticsPanel
+              items={analyticsItems}
+              setItems={setAnalyticsItems}
+            />
+          )}
         </div>
       </div>
     </div>

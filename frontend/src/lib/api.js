@@ -26,6 +26,9 @@ export const api = {
     request(`/projects/${encodeURIComponent(projectId)}`, { method: "PUT", body: patch }),
   deleteProject: (projectId) =>
     request(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
+  // plots
+  listProjectPlots: ({ project_id }) =>
+    request(`/projects/${encodeURIComponent(project_id)}/plots`),
 
   // conversations
   listConversations: ({ project_id, skip = 0, limit = 100, sort_asc = false }) =>

@@ -17,3 +17,6 @@ google-cloud-bigquery
 matplotlib
 psycopg2-binary
 python-dateutil
+statsmodels
+scikit-learn
+numpy

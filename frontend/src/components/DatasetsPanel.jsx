@@ -22,7 +22,13 @@ export default function DatasetsPanel({ projectId }) {
 
   React.useEffect(() => { load() }, [load])
 
+  const hasDataset = items.length > 0
+
   const onPick = async (e) => {
+    if (hasDataset) {         // extra safety
+      e.target.value = ''
+      return
+    }
     const file = e.target.files?.[0]
     if (!file) return
     setError(null)
@@ -59,10 +65,30 @@ export default function DatasetsPanel({ projectId }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-neutral-300">Datasets ({items.length})</h3>
-        <label className="text-xs px-3 py-1 rounded-xl bg-cyan-600 hover:bg-cyan-500 cursor-pointer">
+        <h3 className="text-sm font-semibold text-neutral-300">
+          Datasets ({items.length})
+        </h3>
+        <label
+          className={
+            'text-xs px-3 py-1 rounded-xl ' +
+            (hasDataset || loading
+              ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
+              : 'bg-cyan-600 hover:bg-cyan-500 cursor-pointer')
+          }
+          title={
+            hasDataset
+              ? 'A dataset is already loaded. Delete it to upload another.'
+              : 'Upload CSV'
+          }
+        >
           Upload CSV
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={onPick} />
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={onPick}
+            disabled={hasDataset || loading}
+          />
         </label>
       </div>
 
@@ -70,7 +96,9 @@ export default function DatasetsPanel({ projectId }) {
       {loading && <div className="text-sm text-neutral-400">Working…</div>}
 
       {items.length === 0 ? (
-        <Card className="p-4 text-sm text-neutral-400">No datasets yet. Upload a CSV.</Card>
+        <Card className="p-4 text-sm text-neutral-400">
+          No datasets yet. Upload a CSV.
+        </Card>
       ) : (
         <div className="space-y-2">
           {items.map(ds => (
@@ -79,18 +107,33 @@ export default function DatasetsPanel({ projectId }) {
                 <div>
                   <div className="font-medium text-sm">{ds.name}</div>
                   <div className="text-xs text-neutral-400">
-                    {ds.contentType} • {(ds.size/1024).toFixed(1)} KB • {new Date(ds.createdAt).toLocaleString?.()}
+                    {ds.contentType} • {(ds.size / 1024).toFixed(1)} KB •{' '}
+                    {new Date(ds.createdAt).toLocaleString?.()}
                   </div>
                   {ds.schema && (
                     <div className="mt-2 text-xs text-neutral-400">
-                      Schema: {Object.entries(ds.schema).slice(0,6).map(([k,v]) => `${k}(${v})`).join(', ')}
+                      Schema:{' '}
+                      {Object.entries(ds.schema)
+                        .slice(0, 6)
+                        .map(([k, v]) => `${k}(${v})`)
+                        .join(', ')}
                       {Object.keys(ds.schema).length > 6 ? '…' : ''}
                     </div>
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => onDownload(ds.id)} className="text-xs px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700">Download</button>
-                  <button onClick={() => onDelete(ds.id)} className="text-xs px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700">Delete</button>
+                  <button
+                    onClick={() => onDownload(ds.id)}
+                    className="text-xs px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700"
+                  >
+                    Download
+                  </button>
+                  <button
+                    onClick={() => onDelete(ds.id)}
+                    className="text-xs px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
 
@@ -100,15 +143,25 @@ export default function DatasetsPanel({ projectId }) {
                     <thead className="text-neutral-400">
                       <tr>
                         {Object.keys(ds.preview[0]).map(h => (
-                          <th key={h} className="text-left border-b border-neutral-800 pb-1 pr-4">{h}</th>
+                          <th
+                            key={h}
+                            className="text-left border-b border-neutral-800 pb-1 pr-4"
+                          >
+                            {h}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {ds.preview.slice(0,5).map((row, i) => (
+                      {ds.preview.slice(0, 5).map((row, i) => (
                         <tr key={i}>
                           {Object.keys(row).map(k => (
-                            <td key={k} className="py-1 pr-4 border-b border-neutral-900">{String(row[k])}</td>
+                            <td
+                              key={k}
+                              className="py-1 pr-4 border-b border-neutral-900"
+                            >
+                              {String(row[k])}
+                            </td>
                           ))}
                         </tr>
                       ))}

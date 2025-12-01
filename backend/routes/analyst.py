@@ -15,6 +15,10 @@ from langchain_core.messages import (
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from .eda_tools import EDA_TOOLS
+from .forecast_tools import FORECAST_TOOLS
+
+TOOLS = EDA_TOOLS + FORECAST_TOOLS
+
 from db import client, datasets_collection
 
 router = APIRouter()
@@ -96,8 +100,8 @@ def _load_dataset_context(
 
 
 def _get_conversations_collection():
-    db = client["analytics_ai"]
-    return db["analyst_conversations"]
+    db = client["AI_Analytics"]
+    return db["Conversations"]
 
 
 def _load_chat_history(project_id: str) -> List[Any]:
@@ -228,7 +232,7 @@ def _run_analyst_with_tools(
     messages: List[Any] = [system_message] + list(chat_history) + [user_message]
 
     # 2) Bind tools to the model
-    llm_with_tools = llm.bind_tools(EDA_TOOLS)
+    llm_with_tools = llm.bind_tools(TOOLS)
 
     # 3) First call: let the model decide whether to call tools
     first_ai = llm_with_tools.invoke(messages)
@@ -243,7 +247,7 @@ def _run_analyst_with_tools(
         return first_ai.content, plots
 
     # 5) Execute tool calls
-    tool_by_name = {t.name: t for t in EDA_TOOLS}
+    tool_by_name = {t.name: t for t in TOOLS}
     tool_messages: List[ToolMessage] = []
 
     for tool_call in first_ai.tool_calls:
