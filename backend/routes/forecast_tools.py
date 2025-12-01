@@ -16,7 +16,12 @@ from statsmodels.tsa.arima.model import ARIMA
 from sklearn.linear_model import LinearRegression
 
 from db import get_dataset_df, save_project_plot
-from .gcs_utils import new_image_path, upload_image_and_get_url
+from .gcs_utils import (
+    new_image_path,
+    upload_image_and_get_url,
+    new_file_path,
+    upload_bytes_and_get_url,
+)
 
 
 # ---------- Helpers ----------
@@ -182,6 +187,35 @@ def _forecast_holt_impl(args: HoltArgs) -> Dict[str, Any]:
         args.gcs_prefix,
     )
 
+    combined_forecast = pd.concat([test_forecast, future_forecast])
+    url = _plot_forecast(
+        train,
+        test,
+        combined_forecast,
+        f"Holt/Holt-Winters forecast for {args.y_col}",
+        args.y_col,
+        args.gcs_prefix,
+    )
+
+    # ---------- NEW: CSV report ---------- #
+    report_df = pd.DataFrame(
+        {
+            "timestamp": future_forecast.index,
+            "forecast": future_forecast.values,
+        }
+    )
+    csv_buf = io.StringIO()
+    report_df.to_csv(csv_buf, index=False)
+    csv_bytes = csv_buf.getvalue().encode("utf-8")
+
+    report_path = new_file_path("reports/forecast_holt", ext="csv")
+    report_url = upload_bytes_and_get_url(
+        csv_bytes,
+        report_path,
+        content_type="text/csv",
+    )
+    # ------------------------------------- #
+
     meta = {
         "model": "holt_winters",
         "y_col": args.y_col,
@@ -191,12 +225,14 @@ def _forecast_holt_impl(args: HoltArgs) -> Dict[str, Any]:
         "horizon": args.horizon,
         "test_size": args.test_size,
         "metrics": metrics,
+        "report_path": report_path,
     }
     saved = save_project_plot(args.project_id, args.dataset_id, url, "forecast_holt", meta)
     out = dict(saved)
     out["url"] = url
     out["metrics"] = metrics
     out["horizon_forecast"] = {str(k): float(v) for k, v in future_forecast.items()}
+    out["report_url"] = report_url
     return out
 
 
@@ -225,6 +261,25 @@ def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
         args.gcs_prefix,
     )
 
+    # ---------- NEW: CSV report with future predictions ---------- #
+    report_df = pd.DataFrame(
+        {
+            "timestamp": future_forecast.index,
+            "forecast": future_forecast.values,
+        }
+    )
+    csv_buf = io.StringIO()
+    report_df.to_csv(csv_buf, index=False)
+    csv_bytes = csv_buf.getvalue().encode("utf-8")
+
+    report_path = new_file_path("reports/forecast_arima", ext="csv")
+    report_url = upload_bytes_and_get_url(
+        csv_bytes,
+        report_path,
+        content_type="text/csv",
+    )
+    # ------------------------------------------------------------- #
+
     meta = {
         "model": "arima",
         "order": [args.p, args.d, args.q],
@@ -233,12 +288,14 @@ def _forecast_arima_impl(args: ArimaArgs) -> Dict[str, Any]:
         "horizon": args.horizon,
         "test_size": args.test_size,
         "metrics": metrics,
+        "report_path": report_path,   # keep path in Mongo
     }
     saved = save_project_plot(args.project_id, args.dataset_id, url, "forecast_arima", meta)
     out = dict(saved)
     out["url"] = url
     out["metrics"] = metrics
     out["horizon_forecast"] = {str(k): float(v) for k, v in future_forecast.items()}
+    out["report_url"] = report_url   # 🔥 public CSV URL for frontend download
     return out
 
 
@@ -330,6 +387,24 @@ def _forecast_regression_impl(args: RegrArgs) -> Dict[str, Any]:
         args.y_col,
         args.gcs_prefix,
     )
+    # ---------- NEW: CSV report with future predictions ---------- #
+    report_df = pd.DataFrame(
+        {
+            "timestamp": future_forecast_series.index,
+            "forecast": future_forecast_series.values,
+        }
+    )
+    csv_buf = io.StringIO()
+    report_df.to_csv(csv_buf, index=False)
+    csv_bytes = csv_buf.getvalue().encode("utf-8")
+
+    report_path = new_file_path("reports/forecast_regression", ext="csv")
+    report_url = upload_bytes_and_get_url(
+        csv_bytes,
+        report_path,
+        content_type="text/csv",
+    )
+    # ---------------------------------------------------- #
 
     meta = {
         "model": "time_regression",
@@ -339,12 +414,14 @@ def _forecast_regression_impl(args: RegrArgs) -> Dict[str, Any]:
         "test_size": args.test_size,
         "exog_cols": args.exog_cols or [],
         "metrics": metrics,
+        "report_path": report_path,
     }
     saved = save_project_plot(args.project_id, args.dataset_id, url, "forecast_regression", meta)
     out = dict(saved)
     out["url"] = url
     out["metrics"] = metrics
     out["horizon_forecast"] = {str(k): float(v) for k, v in future_forecast_series.items()}
+    out["report_url"] = report_url
     return out
 
 

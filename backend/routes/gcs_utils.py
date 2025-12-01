@@ -29,3 +29,35 @@ def upload_image_and_get_url(data: bytes, path: str, content_type: str = "image/
     blob.make_public()
 
     return blob.public_url
+
+def new_file_path(prefix: str, ext: str = "csv") -> str:
+    """
+    Build a path for non-image artifacts like CSV reports.
+    """
+    return f"{prefix.rstrip('/')}/{uuid.uuid4().hex}.{ext}"
+
+
+def upload_bytes_and_get_url(
+    data: bytes,
+    path: str,
+    content_type: str = "text/csv",
+) -> str:
+    """
+    Uploads arbitrary bytes as PUBLIC and returns a public URL.
+    E.g. for forecast CSV reports.
+    """
+    if not GCS_BUCKET:
+        raise RuntimeError("GCS_BUCKET env var not set")
+
+    bucket = _storage_client.bucket(GCS_BUCKET)
+    blob = bucket.blob(path)
+
+    blob.upload_from_file(
+        io.BytesIO(data),
+        content_type=content_type,
+    )
+
+    # Make it public as well
+    blob.make_public()
+
+    return blob.public_url

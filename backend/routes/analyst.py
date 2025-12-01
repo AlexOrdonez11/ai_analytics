@@ -123,24 +123,30 @@ def _load_chat_history(project_id: str) -> List[Any]:
 def _log_turn(project_id: str, user_text: str, assistant_text: str):
     coll = _get_conversations_collection()
     now = datetime.utcnow()
-    coll.insert_many(
-        [
-            {
-                "project_id": project_id,
-                "role": "user",
-                "message": {"text": user_text},
-                "timestamp": now,
-                "source": "analyst_agent",
-            },
-            {
-                "project_id": project_id,
-                "role": "assistant",
-                "message": {"text": assistant_text},
-                "timestamp": now,
-                "source": "analyst_agent",
-            },
-        ]
-    )
+
+    try:
+        coll.insert_many(
+            [
+                {
+                    "project_id": project_id,
+                    "role": "user",
+                    "message": {"text": user_text},
+                    "timestamp": now,
+                    "source": "analyst_agent",
+                },
+                {
+                    "project_id": project_id,
+                    "role": "assistant",
+                    "message": {"text": assistant_text},
+                    "timestamp": now,
+                    "source": "analyst_agent",
+                },
+            ]
+        )
+    except Exception as e:
+        # Log the error or handle it as needed
+        print(f"Error logging conversation turn: {e}")
+        raise HTTPException(status_code=500, detail="Failed to log conversation turn")
 
 
 # -----------------------------
