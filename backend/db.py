@@ -32,6 +32,13 @@ charts_collection = db["charts"]
 GCS_BUCKET = os.getenv("GCS_BUCKET")  # e.g. "analytics-ai-bucket"
 _storage_client = storage.Client()
 
+def _parse_project_id(project_id: str):
+    # handle both ObjectId strings and plain strings
+    try:
+        return ObjectId(project_id)
+    except Exception:
+        return project_id
+
 def _get_dataset_meta(project_id: str, dataset_id: Optional[str]) -> Dict[str, Any]:
     """
     Load dataset metadata from Mongo.
@@ -135,7 +142,7 @@ def save_project_plot(project_id: str, dataset_id: str, url: str, plot_type: str
     """
     Push a plot record into projects.plots array and return the saved record.
     """
-    coll = _get_projects_collection()
+    coll = project_collection
     pid = _parse_project_id(project_id)
 
     plot_id = str(ObjectId())
