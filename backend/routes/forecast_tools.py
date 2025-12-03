@@ -607,5 +607,4 @@ def forecast_regression(
 FORECAST_TOOLS = [
     forecast_holt,
     forecast_arima,
-    forecast_regression,
 ]

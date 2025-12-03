@@ -74,10 +74,6 @@ export default function App() {
           projectName={currentProject?.name}
         />
       )}  
-
-      <footer className="mt-12 py-8 text-center text-xs text-neutral-500">
-        Built with ❤️ – Chat-Driven Analytics UI
-      </footer>
     </div>
   )
 }
